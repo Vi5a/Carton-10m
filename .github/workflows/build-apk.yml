@@ -10,6 +10,8 @@ permissions:
 
 env:
   PYTHONFORANDROID_PREREQUISITES_INSTALL_INTERACTIVE: 0
+  # charset_normalizer : installer la version pure Python (voir buildozer.spec)
+  PIP_NO_BINARY: charset-normalizer
 
 jobs:
   apk:
@@ -26,15 +28,15 @@ jobs:
           df -h /
 
       - name: Récupérer le code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Python 3.12
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
       - name: Java 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "17"
@@ -51,7 +53,7 @@ jobs:
           pip install "buildozer==1.6.0"
 
       - name: Cache (SDK, NDK)
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.buildozer
           key: buildozer-sdk-${{ runner.os }}-${{ hashFiles('buildozer.spec') }}
@@ -66,6 +68,32 @@ jobs:
       - name: Résumé de l'erreur
         if: failure()
         run: |
+          # 1) les lignes d'erreur apparaissent dans « Annotations », en haut de la page
+          python3 - <<'PY'
+          import re
+          try:
+              lignes = open("compilation.log", errors="replace").read().splitlines()
+          except OSError:
+              lignes = ["pas de journal"]
+          ansi = re.compile(r"\x1b\[[0-9;]*m")
+          lignes = [ansi.sub("", l).rstrip() for l in lignes]
+          motif = re.compile(r"error|erreur|failed|exception|no space|not found|cannot|undefined", re.I)
+          bruit = re.compile(r"^#\s|ENVIRONMENT|Buildozer failed|might be hidden|bug report|log_level", re.I)
+          idx = [i for i, l in enumerate(lignes) if motif.search(l) and not bruit.search(l)]
+          # première vraie erreur : c'est en général la cause
+          blocs = []
+          for i in idx[:3] + idx[-6:]:
+              bloc = lignes[max(0, i - 6): i + 4]
+              if bloc not in blocs:
+                  blocs.append(bloc)
+          def ann(titre, texte):
+              texte = texte[-3500:].replace("%", "%25").replace("\r", "").replace("\n", "%0A")
+              print(f"::error title={titre}::{texte}")
+          for k, bloc in enumerate(blocs[:8], 1):
+              ann(f"Erreur {k}", "\n".join(bloc))
+          ann("Fin du journal", "\n".join(lignes[-25:]))
+          PY
+          # 2) le même extrait, plus long, dans le résumé en bas de page
           {
             echo "## La compilation a échoué – dernières lignes du journal"
             echo '```'
@@ -78,7 +106,7 @@ jobs:
 
       - name: Journal complet (en cas d'échec)
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: journal-compilation
           path: compilation.log
@@ -91,13 +119,13 @@ jobs:
           ls -la sortie
 
       - name: Fichier téléchargeable (onglet Actions)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: AnalyseCartons-apk
           path: sortie/*.apk
 
       - name: Publication (onglet Releases, téléchargeable depuis le téléphone)
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: apk-${{ github.run_number }}
           name: Analyse Cartons – version ${{ github.run_number }}
