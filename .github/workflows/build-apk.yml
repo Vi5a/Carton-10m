@@ -8,11 +8,23 @@ on:
 permissions:
   contents: write
 
+env:
+  PYTHONFORANDROID_PREREQUISITES_INSTALL_INTERACTIVE: 0
+
 jobs:
   apk:
     runs-on: ubuntu-24.04
     timeout-minutes: 300
     steps:
+      # La compilation d'OpenCV + SDK + NDK dépasse l'espace disque par défaut :
+      # on supprime les outils préinstallés inutiles (comme le fait python-for-android).
+      - name: Libérer de l'espace disque
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup \
+            /opt/hostedtoolcache/CodeQL /usr/local/share/boost "$AGENT_TOOLSDIRECTORY/PyPy" || true
+          sudo docker image prune --all --force || true
+          df -h /
+
       - name: Récupérer le code
         uses: actions/checkout@v4
 
@@ -27,25 +39,50 @@ jobs:
           distribution: temurin
           java-version: "17"
 
+      # Mêmes paquets que l'image de référence de python-for-android (Dockerfile officiel)
       - name: Outils de compilation
         run: |
           sudo apt-get update
-          sudo apt-get install -y git zip unzip autoconf automake libtool libtool-bin pkg-config \
-            zlib1g-dev libncurses-dev cmake libffi-dev libssl-dev \
-            build-essential ccache lld
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            ant autoconf automake autopoint ccache cmake g++ gcc git lbzip2 libffi-dev \
+            libltdl-dev libtool libssl-dev make patch pkg-config python3-dev unzip zip \
+            zlib1g-dev libncurses-dev build-essential lld
           pip install --upgrade pip setuptools wheel
           pip install "buildozer==1.6.0"
 
-      - name: Cache (SDK, NDK, OpenCV déjà compilés)
+      - name: Cache (SDK, NDK)
         uses: actions/cache@v4
         with:
-          path: |
-            ~/.buildozer
-            .buildozer
-          key: buildozer-${{ runner.os }}-${{ hashFiles('buildozer.spec') }}
+          path: ~/.buildozer
+          key: buildozer-sdk-${{ runner.os }}-${{ hashFiles('buildozer.spec') }}
 
-      - name: Compiler l'APK (la première fois ≈ 1 h, ensuite ≈ 10 min)
-        run: yes | buildozer -v android debug
+      - name: Compiler l'APK (≈ 1 h la première fois)
+        run: |
+          set -o pipefail
+          yes | buildozer -v android debug 2>&1 | tee compilation.log
+
+      # En cas d'échec : les dernières lignes du journal s'affichent sur la page
+      # de résumé de la compilation (facile à copier depuis le téléphone).
+      - name: Résumé de l'erreur
+        if: failure()
+        run: |
+          {
+            echo "## La compilation a échoué – dernières lignes du journal"
+            echo '```'
+            grep -n -i -E "error|erreur|failed|exception|no space" compilation.log | tail -n 40 || true
+            echo '-----'
+            tail -n 80 compilation.log || echo "pas de journal"
+            echo '```'
+            df -h /
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Journal complet (en cas d'échec)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: journal-compilation
+          path: compilation.log
+          if-no-files-found: ignore
 
       - name: Renommer l'APK
         run: |
