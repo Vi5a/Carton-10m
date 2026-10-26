@@ -140,6 +140,25 @@ if ANDROID:
             f.write(data)
         return None, chemin
 
+    def marges_systeme(hauteur_fenetre):
+        """(haut, bas, gauche, droite) en pixels des barres système qui recouvrent
+        la fenêtre de l'appli. Zéro si l'appli n'est pas affichée sous ces barres."""
+        try:
+            vue = mActivity.getWindow().getDecorView()
+            if Build.SDK_INT >= 30:
+                Type = autoclass("android.view.WindowInsets$Type")
+                ins = vue.getRootWindowInsets().getInsets(Type.systemBars() | Type.displayCutout())
+                h, b, g, d = ins.top, ins.bottom, ins.left, ins.right
+            else:
+                return 0, 0, 0, 0       # avant Android 11 : jamais d'affichage bord à bord
+            # la fenêtre Kivy couvre-t-elle tout l'écran (barres comprises) ?
+            if hauteur_fenetre < vue.getHeight() - max(h, b, 1) * 0.5:
+                return 0, 0, 0, 0
+            return int(h), int(b), int(g), int(d)
+        except Exception as ex:
+            print("Marges système indisponibles :", ex)
+            return 0, 0, 0, 0
+
     def partager(uri, mime, titre="Partager"):
         if uri is None:
             return False
@@ -188,3 +207,6 @@ else:
 
     def partager(uri, mime, titre="Partager"):
         return False
+
+    def marges_systeme(hauteur_fenetre):
+        return 0, 0, 0, 0
