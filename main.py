@@ -399,6 +399,7 @@ class AnalyseCartonsApp(App):
         self._seance_a_jour = False
 
         racine = BoxLayout(orientation="vertical")
+        self.racine = racine
         self.ecrans = ScreenManager(transition=NoTransition())
         self.ecrans.add_widget(self._ecran_cartons())
         self.ecrans.add_widget(self._ecran_carton())
@@ -418,7 +419,16 @@ class AnalyseCartonsApp(App):
         racine.add_widget(nav)
         self.onglets["cartons"].state = "down"
         Clock.schedule_once(lambda dt: self.rafraichir(), 0)
+        if android_io.ANDROID:
+            Window.bind(size=lambda *_: Clock.schedule_once(self._marges_systeme, 0.2))
+            Clock.schedule_once(self._marges_systeme, 0.5)
         return racine
+
+    def _marges_systeme(self, *_):
+        """Android 15+ : l'appli s'affiche sous la barre d'état et la barre de navigation
+        (bord à bord). On décale l'interface pour que rien ne soit masqué."""
+        haut, bas, gauche, droite = android_io.marges_systeme(Window.height)
+        self.racine.padding = (gauche, haut, droite, bas)
 
     # ------------------------------------------------------------ écrans
     def _ecran_cartons(self):
@@ -538,7 +548,8 @@ class AnalyseCartonsApp(App):
         return True                            # indispensable : la galerie met l'appli en pause
 
     def on_resume(self):
-        pass
+        if android_io.ANDROID:
+            Clock.schedule_once(self._marges_systeme, 0.3)
 
     # ------------------------------------------------------------ messages / tâches
     def message(self, texte, titre="Analyse cartons", partage=None):
