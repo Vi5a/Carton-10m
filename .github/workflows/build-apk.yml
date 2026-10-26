@@ -1,0 +1,68 @@
+name: Construire l'APK Android
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 300
+    steps:
+      - name: Récupérer le code
+        uses: actions/checkout@v4
+
+      - name: Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Outils de compilation
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git zip unzip autoconf automake libtool libtool-bin pkg-config \
+            zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo5 cmake libffi-dev libssl-dev \
+            build-essential ccache lld
+          pip install --upgrade pip setuptools wheel
+          pip install "buildozer==1.5.0" "cython==0.29.36"
+
+      - name: Cache (SDK, NDK, OpenCV déjà compilés)
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.buildozer
+            .buildozer
+          key: buildozer-${{ runner.os }}-${{ hashFiles('buildozer.spec') }}
+
+      - name: Compiler l'APK (la première fois ≈ 1 h, ensuite ≈ 10 min)
+        run: yes | buildozer -v android debug
+
+      - name: Renommer l'APK
+        run: |
+          mkdir -p sortie
+          cp bin/*.apk "sortie/AnalyseCartons-${{ github.run_number }}.apk"
+          ls -la sortie
+
+      - name: Fichier téléchargeable (onglet Actions)
+        uses: actions/upload-artifact@v4
+        with:
+          name: AnalyseCartons-apk
+          path: sortie/*.apk
+
+      - name: Publication (onglet Releases, téléchargeable depuis le téléphone)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: apk-${{ github.run_number }}
+          name: Analyse Cartons – version ${{ github.run_number }}
+          body: APK à installer sur le téléphone Android (autoriser l'installation depuis cette source).
+          files: sortie/*.apk
