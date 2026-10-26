@@ -12,8 +12,11 @@ source.exclude_patterns = README.md
 
 version = 1.1
 
-# OpenCV et numpy sont compilés pour Android par python-for-android
-requirements = python3,kivy,numpy,opencv,pillow,pyjnius,android
+# OpenCV et numpy sont compilés pour Android par python-for-android.
+# charset_normalizer (dépendance de Kivy via requests) est figé en 3.4.9 : à partir
+# de la 3.5.0 il existe en paquet Android précompilé que python-for-android 2026.05
+# essaie à tort d'installer avec le pip de la machine de compilation (échec).
+requirements = python3,kivy,numpy,opencv,pillow,pyjnius,android,charset_normalizer==3.4.9
 
 icon.filename = %(source.dir)s/icone.png
 presplash.filename = %(source.dir)s/presplash.png
