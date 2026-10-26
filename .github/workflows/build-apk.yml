@@ -52,16 +52,38 @@ jobs:
           pip install --upgrade pip setuptools wheel
           pip install "buildozer==1.6.0"
 
-      - name: Cache (SDK, NDK)
-        uses: actions/cache@v6
+      # Cache : SDK, NDK et bibliothèques déjà compilées (OpenCV…). Il est enregistré
+      # même si la compilation échoue : les essais suivants prennent ~10 min au lieu d'1 h.
+      - name: Récupérer le cache
+        id: cache
+        uses: actions/cache/restore@v6
         with:
-          path: ~/.buildozer
-          key: buildozer-sdk-${{ runner.os }}-${{ hashFiles('buildozer.spec') }}
+          path: |
+            ~/.buildozer
+            .buildozer
+          key: buildozer-${{ runner.os }}-${{ hashFiles('buildozer.spec') }}-${{ github.run_id }}
+          restore-keys: |
+            buildozer-${{ runner.os }}-${{ hashFiles('buildozer.spec') }}-
 
       - name: Compiler l'APK (≈ 1 h la première fois)
         run: |
-          set -o pipefail
+          # « yes » accepte les licences ; il se termine en « Broken pipe » quand buildozer
+          # s'arrête, ce qui est normal : seul le code de retour de buildozer compte.
+          # (GitHub exécute les scripts avec « bash -e -o pipefail » : on le désactive ici.)
+          set +e +o pipefail
           yes | buildozer -v android debug 2>&1 | tee compilation.log
+          code=${PIPESTATUS[1]}
+          ls -la bin/ || true
+          exit $code
+
+      - name: Enregistrer le cache
+        if: always()
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            ~/.buildozer
+            .buildozer
+          key: ${{ steps.cache.outputs.cache-primary-key }}
 
       # En cas d'échec : les dernières lignes du journal s'affichent sur la page
       # de résumé de la compilation (facile à copier depuis le téléphone).
@@ -115,7 +137,7 @@ jobs:
       - name: Renommer l'APK
         run: |
           mkdir -p sortie
-          cp bin/*.apk "sortie/AnalyseCartons-${{ github.run_number }}.apk"
+          cp "$(ls -t bin/*.apk | head -1)" "sortie/AnalyseCartons-${{ github.run_number }}.apk"
           ls -la sortie
 
       - name: Fichier téléchargeable (onglet Actions)
